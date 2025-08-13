@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rabindra Info Tech</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <style>
+        body {
+            background-color: #f8f9fa;
+        }
+        .card {
+            transition: transform 0.2s;
+            border: none;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .card:hover {
+            transform: translateY(-5px);
+        }
+        .file-preview {
+            height: 200px;
+            overflow: hidden;
+            background-color: #e9ecef;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .file-preview img, .file-preview video {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+        .file-preview .document-placeholder {
+            font-size: 3rem;
+            color: #6c757d;
+        }
+        .badge {
+            margin-right: 5px;
+        }
+        #notification-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1050;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">Rabindra Info Tech</a>
+            <div class="d-flex">
+                <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#uploadModal">
+                    <i class="fas fa-plus"></i> Upload New
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <div class="input-group w-50 me-2">
+                <input type="text" id="search-input" class="form-control" placeholder="Search by title or tag...">
+                <button class="btn btn-outline-secondary" id="search-button"><i class="fas fa-search"></i></button>
+            </div>
+            <div class="d-flex align-items-center">
+                <input type="date" id="date-picker" class="form-control me-2">
+                <button class="btn btn-outline-secondary" id="clear-date-filter"><i class="fas fa-times"></i></button>
+            </div>
+        </div>
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h2 id="current-date-heading">Daily Uploads</h2>
+            <div>
+                <button class="btn btn-outline-secondary" id="prev-day"><i class="fas fa-chevron-left"></i></button>
+                <button class="btn btn-outline-secondary" id="next-day"><i class="fas fa-chevron-right"></i></button>
+            </div>
+        </div>
+        <div id="file-list" class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+            </div>
+    </div>
+
+    <div class="modal fade" id="uploadModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Upload New File</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="upload-form">
+                        <div class="mb-3">
+                            <label for="upload-file" class="form-label">File</label>
+                            <input type="file" class="form-control" id="upload-file" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="upload-title" class="form-label">Title</label>
+                            <input type="text" class="form-control" id="upload-title" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="upload-description" class="form-label">Description (Optional)</label>
+                            <textarea class="form-control" id="upload-description"></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label for="upload-tags" class="form-label">Tags (comma-separated)</label>
+                            <input type="text" class="form-control" id="upload-tags">
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100">Upload</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="editModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit File Details</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="edit-form">
+                        <input type="hidden" id="edit-id">
+                        <div class="mb-3">
+                            <label for="edit-title" class="form-label">Title</label>
+                            <input type="text" class="form-control" id="edit-title" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="edit-description" class="form-label">Description (Optional)</label>
+                            <textarea class="form-control" id="edit-description"></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label for="edit-tags" class="form-label">Tags (comma-separated)</label>
+                            <input type="text" class="form-control" id="edit-tags">
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100">Save Changes</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="notification-container"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Start of JavaScript code
+        let db;
+        const DB_NAME = 'RabindraInfoTechDB';
+        const DB_VERSION = 1;
+        const STORE_NAME = 'uploads';
+        let currentDate = new Date().toISOString().split('T')[0];
+
+        function openDatabase() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open(DB_NAME, DB_VERSION);
+                request.onerror = event => {
+                    console.error("IndexedDB error:", event.target.errorCode);
+                    showNotification("Database error. Data may not be saved.", "danger");
+                    reject("IndexedDB error");
+                };
+                request.onsuccess = event => {
+                    db = event.target.result;
+                    resolve(db);
+                };
+                request.onupgradeneeded = event => {
+                    const db = event.target.result;
+                    if (!db.objectStoreNames.contains(STORE_NAME)) {
+                        const store = db.createObjectStore(STORE_NAME, { keyPath: 'id', autoIncrement: true });
+                        store.createIndex('date', 'date', { unique: false });
+                        store.createIndex('type', 'type', { unique: false });
+                        store.createIndex('tags', 'tags', { unique: false, multiEntry: true });
+                        store.createIndex('title', 'title', { unique: false });
+                    }
+                };
+            });
+        }
+
+        async function saveEntry(entry) {
+            const transaction = db.transaction([STORE_NAME], 'readwrite');
+            const store = transaction.objectStore(STORE_NAME);
+            return new Promise((resolve, reject) => {
+                const request = store.add(entry);
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => reject(request.error);
+            });
+        }
+
+        async function updateEntry(entry) {
+            const transaction = db.transaction([STORE_NAME], 'readwrite');
+            const store = transaction.objectStore(STORE_NAME);
+            return new Promise((resolve, reject) => {
+                const request = store.put(entry);
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => reject(request.error);
+            });
+        }
+
+        async function getEntriesByDate(date) {
+            const transaction = db.transaction([STORE_NAME], 'readonly');
+            const store = transaction.objectStore(STORE_NAME);
+            const index = store.index('date');
+            return new Promise((resolve, reject) => {
+                const request = index.getAll(IDBKeyRange.only(date));
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => reject(request.error);
+            });
+        }
+
+        async function getEntryById(id) {
+            const transaction = db.transaction([STORE_NAME], 'readonly');
+            const store = transaction.objectStore(STORE_NAME);
+            return new Promise((resolve, reject) => {
+                const request = store.get(id);
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => reject(request.error);
+            });
+        }
+
+        async function deleteEntry(id) {
+            const transaction = db.transaction([STORE_NAME], 'readwrite');
+            const store = transaction.objectStore(STORE_NAME);
+            return new Promise((resolve, reject) => {
+                const request = store.delete(id);
+                request.onsuccess = () => resolve();
+                request.onerror = () => reject(request.error);
+            });
+        }
+
+        function getPreview(entry) {
+            if (entry.type.startsWith('image/')) {
+                return `<img src="${entry.data}" alt="${entry.title}" class="card-img-top">`;
+            } else if (entry.type.startsWith('video/')) {
+                return `<video controls class="card-img-top"><source src="${entry.data}" type="${entry.type}"></video>`;
+            } else {
+                let iconClass = 'fas fa-file-alt';
+                if (entry.name.endsWith('.pdf')) iconClass = 'fas fa-file-pdf';
+                if (entry.name.endsWith('.docx')) iconClass = 'fas fa-file-word';
+                if (entry.name.endsWith('.txt')) iconClass = 'fas fa-file-alt';
+                return `<div class="d-flex justify-content-center align-items-center h-100"><i class="${iconClass} document-placeholder"></i></div>`;
+            }
+        }
+
+        function renderEntries(date, entries = null) {
+            const fileList = document.getElementById('file-list');
+            fileList.innerHTML = '';
+            document.getElementById('current-date-heading').textContent = `Uploads for: ${date}`;
+
+            if (entries === null) {
+                getEntriesByDate(date).then(entries => {
+                    renderCards(entries, fileList);
+                });
+            } else {
+                renderCards(entries, fileList);
+            }
+        }
+
+        function renderCards(entries, fileList) {
+            if (entries.length === 0) {
+                fileList.innerHTML = `<div class="col-12"><p class="text-center text-muted mt-5">No uploads for this day.</p></div>`;
+                return;
+            }
+            entries.forEach(entry => {
+                const card = document.createElement('div');
+                card.className = 'col-md-6 col-lg-4';
+                card.innerHTML = `
+                    <div class="card h-100">
+                        <div class="file-preview">
+                            ${getPreview(entry)}
+                        </div>
+                        <div class="card-body">
+                            <h5 class="card-title">${entry.title}</h5>
+                            <p class="card-text text-muted">${entry.description || ''}</p>
+                            <div>
+                                ${entry.tags.map(tag => `<span class="badge bg-secondary">${tag}</span>`).join('')}
+                            </div>
+                        </div>
+                        <div class="card-footer d-flex justify-content-between">
+                            <button class="btn btn-sm btn-outline-info" onclick="downloadFile(${entry.id})"><i class="fas fa-download"></i> Download</button>
+                            <div>
+                                <button class="btn btn-sm btn-outline-secondary me-2" onclick="openEditModal(${entry.id})"><i class="fas fa-edit"></i> Edit</button>
+                                <button class="btn btn-sm btn-outline-danger" onclick="deleteEntryAndRefresh(${entry.id})"><i class="fas fa-trash"></i> Delete</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                fileList.appendChild(card);
+            });
+        }
+
+        // --- Event Listeners and Functions ---
+        document.getElementById('upload-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const fileInput = document.getElementById('upload-file');
+            const title = document.getElementById('upload-title').value;
+            const description = document.getElementById('upload-description').value;
+            const tags = document.getElementById('upload-tags').value.split(',').map(tag => tag.trim()).filter(tag => tag);
+            const file = fileInput.files[0];
+
+            const allowedTypes = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain', 'image/jpeg', 'image/png', 'video/mp4'];
+            const maxSize = 50 * 1024 * 1024; // 50MB
+
+            if (!file) { showNotification("Please select a file.", "danger"); return; }
+            if (!allowedTypes.includes(file.type)) { showNotification("Invalid file type.", "danger"); return; }
+            if (file.size > maxSize) { showNotification("File size exceeds 50MB.", "danger"); return; }
+
+            const reader = new FileReader();
+            reader.onload = async (event) => {
+                const fileData = event.target.result;
+                const entry = {
+                    date: new Date().toISOString().split('T')[0],
+                    title: title,
+                    description: description,
+                    tags: tags,
+                    type: file.type,
+                    name: file.name,
+                    data: fileData
+                };
+
+                try {
+                    await saveEntry(entry);
+                    showNotification("File uploaded successfully!", "success");
+                    const uploadModal = bootstrap.Modal.getInstance(document.getElementById('uploadModal'));
+                    uploadModal.hide();
+                    e.target.reset();
+                    renderEntries(currentDate);
+                } catch (error) {
+                    showNotification("Failed to save entry.", "danger");
+                    console.error("Save entry error:", error);
+                }
+            };
+            reader.readAsDataURL(file);
+        });
+
+        document.getElementById('edit-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const id = parseInt(document.getElementById('edit-id').value);
+            const title = document.getElementById('edit-title').value;
+            const description = document.getElementById('edit-description').value;
+            const tags = document.getElementById('edit-tags').value.split(',').map(tag => tag.trim()).filter(tag => tag);
+
+            try {
+                const entry = await getEntryById(id);
+                entry.title = title;
+                entry.description = description;
+                entry.tags = tags;
+
+                await updateEntry(entry);
+                showNotification("File details updated successfully!", "success");
+                const editModal = bootstrap.Modal.getInstance(document.getElementById('editModal'));
+                editModal.hide();
+                renderEntries(currentDate);
+            } catch (error) {
+                showNotification("Failed to update entry.", "danger");
+                console.error("Update entry error:", error);
+            }
+        });
+
+        document.getElementById('date-picker').value = currentDate;
+        document.getElementById('date-picker').addEventListener('change', (e) => {
+            currentDate = e.target.value;
+            renderEntries(currentDate);
+        });
+
+        document.getElementById('prev-day').addEventListener('click', () => {
+            const date = new Date(currentDate);
+            date.setDate(date.getDate() - 1);
+            currentDate = date.toISOString().split('T')[0];
+            document.getElementById('date-picker').value = currentDate;
+            renderEntries(currentDate);
+        });
+
+        document.getElementById('next-day').addEventListener('click', () => {
+            const date = new Date(currentDate);
+            date.setDate(date.getDate() + 1);
+            currentDate = date.toISOString().split('T')[0];
+            document.getElementById('date-picker').value = currentDate;
+            renderEntries(currentDate);
+        });
+
+        document.getElementById('clear-date-filter').addEventListener('click', () => {
+            currentDate = new Date().toISOString().split('T')[0];
+            document.getElementById('date-picker').value = currentDate;
+            renderEntries(currentDate);
+        });
+
+        document.getElementById('search-button').addEventListener('click', performSearch);
+        document.getElementById('search-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                performSearch();
+            }
+        });
+
+        function performSearch() {
+            const searchTerm = document.getElementById('search-input').value.toLowerCase();
+            const transaction = db.transaction([STORE_NAME], 'readonly');
+            const store = transaction.objectStore(STORE_NAME);
+            const allItems = store.getAll();
+            allItems.onsuccess = () => {
+                const results = allItems.result.filter(item => {
+                    const titleMatch = item.title.toLowerCase().includes(searchTerm);
+                    const tagMatch = item.tags.some(tag => tag.toLowerCase().includes(searchTerm));
+                    return titleMatch || tagMatch;
+                });
+                renderEntries(currentDate, results);
+            };
+        }
+
+        function showNotification(message, type) {
+            const container = document.getElementById('notification-container');
+            const notification = document.createElement('div');
+            notification.className = `alert alert-${type} alert-dismissible fade show`;
+            notification.role = 'alert';
+            notification.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            container.appendChild(notification);
+            setTimeout(() => {
+                notification.remove();
+            }, 5000);
+        }
+
+        function downloadFile(id) {
+            getEntryById(id).then(entry => {
+                const link = document.createElement('a');
+                link.href = entry.data;
+                link.download = entry.name;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            }).catch(err => {
+                showNotification("Error downloading file.", "danger");
+                console.error(err);
+            });
+        }
+
+        function deleteEntryAndRefresh(id) {
+            if (confirm("Are you sure you want to delete this file?")) {
+                deleteEntry(id).then(() => {
+                    showNotification("File deleted successfully!", "success");
+                    renderEntries(currentDate);
+                }).catch(err => {
+                    showNotification("Error deleting file.", "danger");
+                    console.error(err);
+                });
+            }
+        }
+        
+        function openEditModal(id) {
+            getEntryById(id).then(entry => {
+                document.getElementById('edit-id').value = entry.id;
+                document.getElementById('edit-title').value = entry.title;
+                document.getElementById('edit-description').value = entry.description;
+                document.getElementById('edit-tags').value = entry.tags.join(', ');
+                const editModal = new bootstrap.Modal(document.getElementById('editModal'));
+                editModal.show();
+            }).catch(err => {
+                showNotification("Error fetching file details.", "danger");
+                console.error(err);
+            });
+        }
+
+        // Initialize the app
+        openDatabase().then(() => {
+            renderEntries(currentDate);
+        }).catch(err => {
+            console.error("App failed to initialize.", err);
+        });
+    </script>
+</body>
+</html>
